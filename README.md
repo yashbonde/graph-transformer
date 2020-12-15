@@ -22,4 +22,13 @@ Using the above approach we can then define any transformer block with indexing.
 
 ### Tests
 
-To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. 
+To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. To play with the GPT implementation run `gpt_gt.py` (currently building)!
+
+### Samples
+
+These will be the text samples build out GPT model.
+
+
+## Credits
+
+Code is under MIT License and the `sample.txt` is from [here](https://www.unqualified-reservations.org/2009/01/gentle-introduction-to-unqualified/).
