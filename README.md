@@ -9,7 +9,7 @@ BERT: (Fully connected Network), the adjacency matrix can be given as:
  [1, 1, 1]]
 
 GPT: (Forward Connected Network), the adjacency matrix can be given as:
-    A  B  C
+    A' B' C'
 A [[1, 0, 0],
 B  [1, 1, 0],
 C  [1, 1, 1]]
@@ -22,4 +22,4 @@ Using the above approach we can then define any transformer block with indexing.
 
 ### Tests
 
-To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI.
+To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. 

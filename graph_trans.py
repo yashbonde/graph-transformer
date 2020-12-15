@@ -6,14 +6,14 @@ import torch.nn.functional as F
 from torch_scatter import scatter_mean, scatter_max
 
 
-class TransformerConvBlock(nn.Module):
+class TransformerConvBlock(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.ln1 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon)
-        self.ln2 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon)
-        self.lin_q = nn.Linear(config.n_embd, config.n_embd)
-        self.lin_kv = nn.Linear(config.n_embd, config.n_embd * 2)
+        self.ln1 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon) # for all the inputs
+        self.ln2 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon) # for the edge attributes
+        self.lin_q = nn.Linear(config.n_embd, config.n_embd) # linear for query
+        self.lin_kv = nn.Linear(config.n_embd, config.n_embd * 2) # linear key value
         self.lin_edge = nn.Linear(config.n_embd, config.n_embd)
         self.ln3 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon)
         self.lin_proj = nn.Sequential(*[
@@ -42,37 +42,63 @@ class TransformerConvBlock(nn.Module):
         w = F.softmax(w, dim = -1)
         o = torch.matmul(w, v)
         return o
+    
+    def collect(self, x, ei):
+        return torch.cat([
+            x[i, ei[i]] for i in range(ei.size(0))
+        ], dim = 0).reshape(ei.size(0), -1, x.size(-1))
 
     def forward(self, inputs):
         x_orig, edge_index, edge_attr = inputs
         config = self.config
         # [N,dim] -> [E,dim]
-        x = self.ln1(x_orig)
-        k, q = x[..., edge_index[0], :], x[..., edge_index[1], :]
+#         x = self.ln1(x_orig)
+        x = x_orig
+        print(edge_index[:, 0])
+        print(edge_index[:, 1])
+    
+        # go from [N,N] --> [E,E] as E < N
+#         k, q = x[:, edge_index[:, 0], :], x[:, edge_index[:, 1], :]
+        k = self.collect(x, edge_index[:, 0])
+        q = self.collect(x, edge_index[:, 1])
+
+        print(k.size(), q.size())
+        print("---", k.size())
         q = self.lin_q(q)
         e = self.lin_edge(self.ln2(edge_attr))
         q = e + q # update query with edge attr
+        print("q + e:", q.size())
         
         k = self.lin_kv(k)
-        k, v = torch.split(
+        k_join, v_join = torch.split(
             tensor = k,
             split_size_or_sections = config.n_embd,
             dim = -1
         )
-        q, k, v = self.split_heads(q), self.split_heads(k, k = True), self.split_heads(v)
+        q, k, v = self.split_heads(q), self.split_heads(k_join, k = True), self.split_heads(v_join)
         a = self._attn(q, k, v)
         print("---", x.size(), a.size())
-        x_edge = self.ln3(x + a) # residual + LN
-        a = self.lin_proj(x_edge)
-        x_edge = a + x_edge # residual
-        x_edge = scatter_mean(x_edge, edge_index[1], dim = -2)
-
-        # now how to update the [N,dim] from [E,dim]
-        # flow of information is from source to target so target's
-        # get updates not the source
-        x_orig[..., edge_index[1], :] = x_edge[..., edge_index[1], :]
+        a = self.merge_heads(a)
+#         print("ADFFAFAFAFAa", a)
+        hidden = self.ln3(v_join + a) # residual + LN
+        a = self.lin_proj(hidden)
+#         print(a)
+        hidden = a + hidden # residual
+#         print("!@#@#@!#$!@#%@#$%^@#$%^3", hidden, edge_index[1])
+        hidden = scatter_mean(hidden, edge_index[1], dim = 1)
+#         print(edge_index[1], hidden, x.size())
+        # pad by the number of indices in input
+        if x.size(1) > hidden.size(1):
+            # always need to add at last
+            size_to_add = (hidden.size(0), x.size(1) - hidden.size(1), x.size(2))
+#             print("##---###---###---####", size_to_add)
+            hidden = torch.cat([hidden, torch.zeros(size_to_add)], dim = 1)
+#         print(hidden.size())
         
-        return (x_orig, edge_index, edge_attr) # return a list too
+        x = torch.where(hidden != 0., hidden, x)
+#         print("#################", x.size())
+
+        return (x, edge_index, edge_attr) # return a list too
 
 
 class GraphEncoder(nn.Module):
