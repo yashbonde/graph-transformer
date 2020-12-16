@@ -23,6 +23,8 @@ config = SimpleNamespace(
     n_layer=3,
     vocab_size=5,
 )
+ATOL = 0
+RTOL = 1e-6
 
 # to check transformer block
 def test_block_multi_batch():
@@ -58,7 +60,7 @@ def test_block_multi_batch():
         xout, _, _ = gcn((x, edge_index, edge_attr))
         xout = torch.Tensor(np.round(xout.numpy(), decimals = 3))
 
-    assert torch.all(xout.eq(torch.Tensor(
+    np.testing.assert_allclose(xout.cpu().numpy(), torch.Tensor(
         [[[ 0.4260,  0.9830, -0.8730,  1.2230, -0.1560, -1.6030],
          [-0.8200, -0.9140,  0.5060,  1.6960, -0.5290, -0.5150],
          [-0.8200, -0.9140,  0.5060,  1.6960, -0.5290, -0.5150],
@@ -68,7 +70,7 @@ def test_block_multi_batch():
          [-0.1880,  0.9170,  0.4590, -1.7680, -0.6090,  1.1900],
          [-1.8030, -0.6210, -0.5260,  1.6080,  1.4340,  0.3680],
          [-1.6850, -0.5550, -0.5360,  1.3360,  1.5830,  0.3910]]]
-    ))).item(), "Failed in output value"
+    ).numpy(), atol=ATOL, rtol=RTOL)
 
 
 def test_network():
@@ -102,7 +104,7 @@ def test_network():
         xout = G(x, edge_index, edge_attr)
         xout = torch.Tensor(np.round(xout.numpy(), decimals = 3))
 
-    assert torch.all(xout.eq(torch.Tensor(
+    np.testing.assert_allclose(xout.cpu().numpy(), torch.Tensor(
         [[[-1.4530,  1.8800, -0.3080,  0.1980,  0.1330, -0.4500],
          [ 0.9540, -0.5450,  0.4940, -0.1450, -2.0220,  1.0780],
          [ 1.0310, -0.2620,  0.0760, -0.2450, -1.9300,  1.2730],
@@ -114,4 +116,5 @@ def test_network():
          [ 0.8370, -1.2450,  0.5960,  0.1530, -1.6260,  1.1610],
          [ 0.8370, -1.2430,  0.5960,  0.1530, -1.6280,  1.1620],
          [-0.3490, -1.1050, -0.6820,  1.2670,  1.4850, -0.6160]]]
-    ))).item(), "Failed in output value"
+    ).numpy(), atol=ATOL, rtol=RTOL)
+
