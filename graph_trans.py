@@ -99,9 +99,8 @@ class TransformerConvBlock(torch.nn.Module):
 
 
 class GraphEncoder(nn.Module):
-    def __init__(self, config, emb):
+    def __init__(self, config):
         super().__init__()
-        self.emb = emb  # common embedding across all the models
         self.enc = nn.Sequential(*[
             TransformerConvBlock(config) for _ in range(config.n_layer)
         ])
@@ -118,10 +117,88 @@ class GraphEncoder(nn.Module):
         return embed[req_idx]
 
     def forward(self, x, edge_index, edge_attr, node_index=None, req_idx=None):
-        emb = self.emb(x)  # get embeddings
-        print(emb)
         if node_index is not None and req_idx is not None:
             # merge embeddings if needed
-            emb = self.merge_embeddings(x, node_index, req_idx, mode="mean")
-        out = self.enc((emb, edge_index, edge_attr))
+            x = self.merge_embeddings(x, node_index, req_idx, mode="mean")
+        out = self.enc((x, edge_index, edge_attr))
         return out[0]
+
+
+class ModelConfig():
+    n_embd = None
+    layer_norm_epsilon=1e-5 # epsilon for layer norm
+    initializer_range=0.2
+    n_head = None # number of heads
+    n_layer = None # number of layers
+    vocab_size = None # vocab size of primary tokens
+    spv_size = None # special position tags (secondary tokens)
+    def __init__(self, **kwargs):
+        self.attrs = []
+        for k,v in kwargs.items():
+            setattr(self, k, v)
+            self.attrs.append(k)
+
+    def __repr__(self):
+        return "---- MODEL CONFIGURATION ----\n" + \
+            "\n".join([
+                f"{k}\t{getattr(self, k)}" for k in list(set(self.attrs))
+            ]) + "\n"
+
+
+# --- helper functions --- #
+def init_weights(module):
+    if isinstance(module, (nn.Linear, nn.Embedding)):
+        module.weight.data.normal_(mean=0.0, std=0.2)
+        if isinstance(module, nn.Linear) and module.bias is not None:
+            module.bias.data.zero_()
+    elif isinstance(module, (nn.LayerNorm)):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
+
+def configure_optimizers(model, train_config):
+    """
+    from karpathy/minGPT
+    This long function is unfortunately doing something very simple and is being very defensive:
+    We are separating out all parameters of the model into two buckets: those that will experience
+    weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
+    We are then returning the PyTorch optimizer object.
+    """
+    # separate out all parameters to those that will and won't experience regularizing weight decay
+    decay = set()
+    no_decay = set()
+    whitelist_weight_modules = (torch.nn.Linear)
+    blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding) # add denorm here
+    for mn, m in model.named_modules():
+        for pn, p in m.named_parameters():
+            fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+            
+            if "ValueHead" in fpn: # no decay for value head layers
+                no_decay.add(fpn)
+
+            pn_type = pn.split(".")[-1]
+            if pn_type == 'bias':
+                # all biases will not be decayed
+                no_decay.add(fpn)
+            elif pn_type == 'weight' and isinstance(m, whitelist_weight_modules):
+                # weights of whitelist modules will be weight decayed
+                decay.add(fpn)
+            elif pn_type == 'weight' and isinstance(m, blacklist_weight_modules):
+                # weights of blacklist modules will NOT be weight decayed
+                no_decay.add(fpn)
+
+    # validate that we considered every parameter
+    param_dict = {pn: p for pn, p in model.named_parameters()}
+    inter_params = decay & no_decay
+    union_params = decay | no_decay
+    
+    assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
+    assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
+                                                % (str(param_dict.keys() - union_params), )
+
+    # create the pytorch optimizer object
+    optim_groups = [
+        {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": train_config.weight_decay},
+        {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+    ]
+    optimizer = torch.optim.AdamW(optim_groups, lr=train_config.lr, betas=train_config.betas)
+    return optimizer

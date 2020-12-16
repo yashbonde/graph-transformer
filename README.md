@@ -20,6 +20,17 @@ is token at t, B (t+1) and C (t+2).
 
 Using the above approach we can then define any transformer block with indexing.
 
+### Installation 
+
+This requires installation [`pytorch_geometric`](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) on CPU and `torch.__version__ = 1.7.0` run command
+```
+pip3 install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.7.0+cpu.html
+pip3 install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.7.0+cpu.html
+pip3 install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.7.0+cpu.html
+pip3 install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.7.0+cpu.html
+pip3 install torch-geometric
+```
+
 ### Tests
 
 To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. To play with the GPT implementation run `gpt_gt.py` (currently building)!
