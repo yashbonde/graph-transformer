@@ -3,6 +3,7 @@ import re
 import numpy as np
 from types import SimpleNamespace
 
+from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import cross_entropy
 from graph_trans import GraphEncoder, TransformerConvBlock, ModelConfig, init_weights
 rnd = np.random.randn
@@ -10,13 +11,27 @@ rnd = np.random.randn
 import torch
 from torch import nn, functional as F
 
-# open a sample text file
-with open("sample.txt", "r", encoding = "utf-8") as f:
-    data = f.read()
-    data = re.sub(r"[^a-z0-9\s]", "", data.lower())
-    vocab = {k:i for i,k in enumerate(sorted(list(set(data))))}
-    print(vocab)
-    data = np.array([vocab[x] for x in data])
+class TextDataset(Dataset):
+    def __init__(self, maxlen):
+        super().__init__()
+        # open a sample text file
+        with open("sample.txt", "r", encoding = "utf-8") as f:
+            data = f.read()
+            data = re.sub(r"[^a-z0-9\s]", "", data.lower())
+            vocab = {k:i for i,k in enumerate(sorted(list(set(data))))}
+            data = np.array([vocab[x] for x in data])
+        # clip data
+        data = data[:-(len(data) % maxlen)]
+        data = data.reshape(-1, maxlen)
+        self.vocab = vocab
+        self.data = data
+        self.maxlen = maxlen
+
+    def __getitem__(self, i):
+        return {
+            "input_ids": torch.Tensor(self.data[i]).long(),
+            "sp_tokens": torch.arange(0, self.maxlen, 1).long()
+        }
 
 # ---- model ---- #
 class GPT(nn.Module):
@@ -47,21 +62,21 @@ class GPT(nn.Module):
             out = out + [loss]
         return out
 
+
+MAXLEN = 40
+data = TextDataset(MAXLEN)
 # declare the config
 config = ModelConfig(
-    vocab_size = len(vocab),
+    vocab_size = len(data.vocab),
     n_embd = 18,
-    maxlen = 40,
-    spv_size = 40,
+    maxlen = MAXLEN,
+    spv_size = MAXLEN,
     n_layer = 2,
     n_head = 2
 )
 gpt_model = GPT(config)
 
-# clip data
-data = data[:-(len(data) % config.maxlen)]
-data = data.reshape(-1, config.maxlen)
-
-print("*** DATASET:", data.shape)
+print("*** DATASET:", data.data.shape)
 print("*** GPT MODEL:", gpt_model.num_params)
+print(data[100])
 

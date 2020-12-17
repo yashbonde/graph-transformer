@@ -36,7 +36,7 @@ class TransformerConvBlock(torch.nn.Module):
         new_x_shape = x.size()[:-2] + (x.size(-2) * x.size(-1),)
         return x.view(*new_x_shape)  # in Tensorflow implem: fct merge_states
 
-    def _attn(self, q, k, v):
+    def _attn(self, q, k, v,):
         w = torch.matmul(q, k)
         w /= (float(v.size(-1)) ** 0.5)
         w = F.softmax(w, dim = -1)
