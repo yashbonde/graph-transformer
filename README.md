@@ -33,7 +33,7 @@ pip3 install torch-geometric
 
 ### Tests
 
-To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. To play with the GPT implementation run `gpt_gt.py` (currently building)!
+To run the tests, you must have `pytest` installed on your system, run `pytest` in CLI. To play with the GPT implementation run `gpt_gt.py`! For some reason I am unable to upload my new sample.txt file, so get it from [here](https://github.com/karpathy/char-rnn/blob/master/data/tinyshakespeare/input.txt). To see it in action run `python3 gpt_gt.py`.
 
 ### Samples
 
