@@ -14,7 +14,7 @@ class TransformerConvBlock(torch.nn.Module):
         self.ln2 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon) # for the edge attributes
         self.lin_q = nn.Linear(config.n_embd, config.n_embd) # linear for query
         self.lin_kv = nn.Linear(config.n_embd, config.n_embd * 2) # linear key value
-        self.lin_edge = nn.Linear(config.n_embd, config.n_embd)
+        self.lin_edge = nn.Linear(config.n_embd, config.n_embd, bias = config.edge_bias)
         self.ln3 = nn.LayerNorm(config.n_embd, eps = config.layer_norm_epsilon)
         self.lin_proj = nn.Sequential(*[
             nn.Linear(config.n_embd, config.n_embd * 4),
@@ -48,25 +48,29 @@ class TransformerConvBlock(torch.nn.Module):
             x[i, ei[i]] for i in range(ei.size(0))
         ], dim = 0).reshape(ei.size(0), -1, x.size(-1))
 
+    def _vp(self, *args, verbose):
+        if verbose:
+            print(*args)
+
     def forward(self, inputs):
-        x_orig, edge_index, edge_attr = inputs
+        x_orig, edge_index, edge_attr, verbose = inputs
         config = self.config
         # [N,dim] -> [E,dim]
         x = self.ln1(x_orig)
         # x = x_orig
-        # print(edge_index[:, 0])
-        # print(edge_index[:, 1])
+        self._vp("1--->", edge_index[:, 0], verbose = verbose)
+        self._vp("2--->", edge_index[:, 1], verbose = verbose)
 
         # go from [N,N] --> [E,E] as E < N
         k = self.collect(x, edge_index[:, 0])
         q = self.collect(x, edge_index[:, 1])
 
-        # print(k.size(), q.size())
-        # print("---", k.size())
+        self._vp("3--->", k.size(), q.size(), verbose = verbose)
+        self._vp("4--->", k.size(), verbose = verbose)
         q = self.lin_q(q)
         e = self.lin_edge(self.ln2(edge_attr))
         q = e + q # update query with edge attr
-        # print("q + e:", q.size())
+        self._vp("5--> q + e:", q.size(), verbose = verbose)
         
         k = self.lin_kv(k)
         k_join, v_join = torch.split(
@@ -76,26 +80,26 @@ class TransformerConvBlock(torch.nn.Module):
         )
         q, k, v = self.split_heads(q), self.split_heads(k_join, k = True), self.split_heads(v_join)
         a = self._attn(q, k, v)
-        # print("---", x.size(), a.size())
+        self._vp("6--->", x.size(), a.size(), verbose = verbose)
         a = self.merge_heads(a)
-        # print("ADFFAFAFAFAa", a)
+        self._vp("7--->", a.size(), verbose = verbose)
         hidden = self.ln3(v_join + a) # residual + LN
         a = self.lin_proj(hidden)
-        # print(a)
+        self._vp("8--->", a.size(), verbose = verbose)
         hidden = a + hidden # residual
-        # print("!@#@#@!#$!@#%@#$%^@#$%^3", hidden, edge_index[1])
-        hidden = scatter_mean(hidden, edge_index[1], dim = 1)
-        # print(edge_index[1], hidden, x.size())
+        self._vp("9--->", hidden.size(), edge_index[: 1], verbose = verbose)
+        hidden = scatter_mean(hidden, edge_index[:, 1], dim = 1)
+        self._vp("10--->", edge_index[:, 1], hidden.size(), x.size(), verbose = verbose)
         # pad by the number of indices in input
         if x.size(1) > hidden.size(1):
             # always need to add at last
             size_to_add = (hidden.size(0), x.size(1) - hidden.size(1), x.size(2))
-            # print("##---###---###---####", size_to_add)
+            self._vp("##---###---###---####", size_to_add, verbose = verbose)
             hidden = torch.cat([hidden, torch.zeros(size_to_add)], dim = 1)
-        # print(hidden.size())
+        self._vp(hidden.size(), verbose = verbose)
         x = torch.where(hidden != 0., hidden, x)
-        # print("#################", x.size())
-        return (x, edge_index, edge_attr) # return a list too
+        self._vp("#################", x.size(), verbose = verbose)
+        return (x, edge_index, edge_attr, verbose) # return a list too
 
 
 class GraphEncoder(nn.Module):
@@ -132,6 +136,7 @@ class ModelConfig():
     n_layer = None # number of layers
     vocab_size = None # vocab size of primary tokens
     spv_size = None # special position tags (secondary tokens)
+    edge_bias=True
     def __init__(self, **kwargs):
         self.attrs = []
         for k,v in kwargs.items():
